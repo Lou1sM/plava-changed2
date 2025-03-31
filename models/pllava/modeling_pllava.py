@@ -94,23 +94,24 @@ class PllavaCausalLMOutputWithPast(ModelOutput):
 class PllavaMultiModalProjector(nn.Module):
     supported_highres = ['pad_crop_four', 'slide', ]
     def __init__(self, config: PllavaConfig):
-        super().__init__()  
+        super().__init__()
         self.use_pooling = config.use_pooling
         self.frame_shape=config.frame_shape
         self.num_frames = config.num_frames
         self.pooling_shape = config.pooling_shape
-        
-        self.pooling = nn.AdaptiveAvgPool3d(config.pooling_shape)
+
+        #self.pooling = nn.AdaptiveAvgPool3d(config.pooling_shape)
+        self.pooling = nn.AdaptiveAvgPool3d((16,8,8))
         self.linear_1 = nn.Linear(config.vision_config.hidden_size, config.text_config.hidden_size, bias=True)
         self.act = ACT2FN[config.projector_hidden_act]
         self.linear_2 = nn.Linear(config.text_config.hidden_size, config.text_config.hidden_size, bias=True)
 
     def convert_Fembeddings2video(self, input, num_videos, frame_shape):
-        input = einops.rearrange(input, 
-                                '(num_videos num_frames) (h w) embed_dims -> num_videos embed_dims num_frames h w', 
+        input = einops.rearrange(input,
+                                '(num_videos num_frames) (h w) embed_dims -> num_videos embed_dims num_frames h w',
                                 num_videos=num_videos, h=frame_shape[0])
         return input
-    
+
     def convert_video2Fembeddings(self, input):
         input = einops.rearrange(input, 'num_videos embed_dims num_frames h w -> (num_videos num_frames) (h w) embed_dims ', )
         return input
@@ -130,7 +131,7 @@ class PllavaMultiModalProjector(nn.Module):
 
         total_frames, spatial_seqlen, embed_dims = hidden_states.shape
         #TODO: temporal code, should ensure num_frames == total frames in data loading later
-        if total_frames < num_frames and self.use_pooling: # 
+        if total_frames < num_frames and self.use_pooling: #
             multiplier = int(num_frames/total_frames)+1
             hidden_states= hidden_states.repeat_interleave(multiplier, dim=0)[:num_frames]
             total_frames, spatial_seqlen, embed_dims = hidden_states.shape
@@ -291,7 +292,8 @@ class PllavaForConditionalGeneration(PllavaPreTrainedModel):
         self.vision_tower = AutoModel.from_config(config.vision_config)
         self.multi_modal_projector = PllavaMultiModalProjector(config)
         self.vocab_size = config.vocab_size
-        self.language_model = AutoModelForCausalLM.from_config(config.text_config, torch_dtype=config.torch_dtype, attn_implementation="flash_attention_2")
+        #self.language_model = AutoModelForCausalLM.from_config(config.text_config, torch_dtype=config.torch_dtype, attn_implementation="flash_attention_2")
+        self.language_model = AutoModelForCausalLM.from_config(config.text_config, torch_dtype=config.torch_dtype)
         self.pad_token_id = self.config.pad_token_id if self.config.pad_token_id is not None else self.config.text_config.pad_token_id
         assert self.pad_token_id is not None, 'provide the model with pad_token_id, this would be used to arranging new embedings'
         self.post_init()
@@ -376,22 +378,23 @@ class PllavaForConditionalGeneration(PllavaPreTrainedModel):
             final_labels[batch_indices, text_to_overwrite] = labels[batch_indices, non_image_indices]
 
         # 5. Fill the embeddings corresponding to the images. Anything that is still zeros needs filling
-        image_to_overwrite = torch.all(final_embedding == 0, dim=-1)
-        image_to_overwrite &= image_to_overwrite.cumsum(-1) > nb_image_pad[:, None].to(target_device)
+        #image_to_overwrite = torch.all(final_embedding == 0, dim=-1)
+        #image_to_overwrite &= image_to_overwrite.cumsum(-1) > nb_image_pad[:, None].to(target_device)
 
         # # somthing really weird here.
         # temp1 = (image_to_overwrite.cumsum(-1) > nb_image_pad[:, None].to(target_device)) & image_to_overwrite
         # # this is for right padding
         # temp2 = (image_to_overwrite.cumsum(-1) <=  num_special_image_tokens.max() * num_image_patches - nb_image_pad[:, None]) & image_to_overwrite
 
-        if image_to_overwrite.sum() != image_features.shape[:-1].numel():
-            raise ValueError(
-                f"The input provided to the model are wrong. The number of image tokens is {torch.sum(special_image_token_mask)} while"
-                f" the number of image given to the model is {num_images}. This prevents correct indexing and breaks batch generation."
-            )
+        #image_to_overwrite = torch.zeros_like(image_features[0,:,0])
+        #if image_to_overwrite.sum() != image_features.shape[:-1].numel():
+        #    raise ValueError(
+        #        f"The input provided to the model are wrong. The number of image tokens is {torch.sum(special_image_token_mask)} while"
+        #        f" the number of image given to the model is {num_images}. This prevents correct indexing and breaks batch generation."
+        #    )
 
-        final_embedding[image_to_overwrite] = image_features.contiguous().reshape(-1, embed_dim).to(target_device)
-        final_attention_mask |= image_to_overwrite
+        #final_embedding[image_to_overwrite] = image_features.contiguous().reshape(-1, embed_dim).to(target_device)
+        #final_attention_mask |= image_to_overwrite
         position_ids = (final_attention_mask.cumsum(-1) - 1).masked_fill_((final_attention_mask == 0), 1)
 
         if labels is None:
@@ -486,7 +489,7 @@ class PllavaForConditionalGeneration(PllavaPreTrainedModel):
                                                             media_type,
                                                             batch_size=batch_size,
                                                             num_videos=pixel_values.shape[0]//self.config.num_frames//batch_size,)
-                    
+
                 inputs_embeds, attention_mask, labels, position_ids = self._merge_input_ids_with_image_features(
                     image_features, inputs_embeds, input_ids, attention_mask, labels
                 )
@@ -524,7 +527,7 @@ class PllavaForConditionalGeneration(PllavaPreTrainedModel):
 
                     attention_mask = torch.cat((attention_mask, extended_attention_mask), dim=1)
                     position_ids = torch.sum(attention_mask, dim=1).unsqueeze(-1) - 1
-        
+
         outputs = self.language_model(
             attention_mask=attention_mask,
             position_ids=position_ids,

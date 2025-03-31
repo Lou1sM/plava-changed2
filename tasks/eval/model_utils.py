@@ -44,18 +44,27 @@ def load_pllava(repo_id, num_frames, use_lora=False, weight_dir=None, lora_alpha
     if num_frames == 0:
         kwargs.update(pooling_shape=(0,12,12)) # produce a bug if ever usen the pooling projector
     config = PllavaConfig.from_pretrained(
-        repo_id if not use_lora else weight_dir,
+        #repo_id if not use_lora else weight_dir,
+        repo_id,
         pooling_shape=pooling_shape,
         **kwargs,
     )
-    
+
     with torch.no_grad():
         model = PllavaForConditionalGeneration.from_pretrained(repo_id, config=config, torch_dtype=torch.bfloat16)
-        
-    try:
-        processor = PllavaProcessor.from_pretrained(repo_id)
-    except Exception as e:
-        processor = PllavaProcessor.from_pretrained('llava-hf/llava-1.5-7b-hf')
+
+    #try:
+    #    processor = PllavaProcessor.from_pretrained(repo_id)
+    #except Exception as e:
+    #    processor = PllavaProcessor.from_pretrained('llava-hf/llava-1.5-7b-hf')
+    from transformers import AutoTokenizer, AutoImageProcessor
+
+    # Load components separately
+    tokenizer = AutoTokenizer.from_pretrained('llava-hf/llava-1.5-7b-hf')
+    image_processor = AutoImageProcessor.from_pretrained('llava-hf/llava-1.5-7b-hf')
+
+    # Then create your PllavaProcessor manually if needed
+    processor = PllavaProcessor(tokenizer=tokenizer, image_processor=image_processor)
 
     # config lora
     if use_lora and weight_dir is not None:
@@ -68,7 +77,7 @@ def load_pllava(repo_id, num_frames, use_lora=False, weight_dir=None, lora_alpha
         model.language_model = get_peft_model(model.language_model, peft_config)
         assert weight_dir is not None, "pass a folder to your lora weight"
         print("Finish use lora")
-    
+
     # load weights
     if weight_dir is not None:
         state_dict = {}
@@ -77,7 +86,7 @@ def load_pllava(repo_id, num_frames, use_lora=False, weight_dir=None, lora_alpha
             use_full = False
             for fn in save_fnames:
                 if fn.startswith('model-0'):
-                    use_full=True        
+                    use_full=True
                     break
         else:
             use_full= True
@@ -94,7 +103,7 @@ def load_pllava(repo_id, num_frames, use_lora=False, weight_dir=None, lora_alpha
                     with safe_open(f"{weight_dir}/{fn}", framework="pt", device="cpu") as f:
                         for k in f.keys():
                             state_dict[k] = f.get_tensor(k)
-            
+
         if 'model' in state_dict.keys():
             msg = model.load_state_dict(state_dict['model'], strict=False)
         else:
@@ -144,7 +153,7 @@ def pllava_answer(conv: Conversation, model, processor, img_list, do_sample=True
     if inputs['pixel_values'] is None:
         inputs.pop('pixel_values')
     inputs = inputs.to(model.device)
-    
+
     # set up stopping criteria
     if stop_criteria_keywords is not None:
         stopping_criteria = [KeywordsStoppingCriteria(stop_criteria_keywords, processor.tokenizer, inputs["input_ids"])]
@@ -153,8 +162,8 @@ def pllava_answer(conv: Conversation, model, processor, img_list, do_sample=True
 
     with torch.no_grad():
         output_token = model.generate(**inputs, media_type='video',
-                                      do_sample=do_sample, max_new_tokens=max_new_tokens, num_beams=num_beams, min_length=min_length, 
-                                      top_p=top_p, repetition_penalty=repetition_penalty, length_penalty=length_penalty, temperature=temperature, 
+                                      do_sample=do_sample, max_new_tokens=max_new_tokens, num_beams=num_beams, min_length=min_length,
+                                      top_p=top_p, repetition_penalty=repetition_penalty, length_penalty=length_penalty, temperature=temperature,
                                       stopping_criteria=stopping_criteria,)
         output_text = processor.batch_decode(output_token, skip_special_tokens=True, clean_up_tokenization_spaces=False)[0]
 

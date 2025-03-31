@@ -29,7 +29,7 @@ logging.basicConfig()
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-RESOLUTION = 672 # 
+RESOLUTION = 672 #
 
 
 def parse_args():
@@ -69,13 +69,13 @@ def parse_args():
         default=None,
     )
     parser.add_argument(
-        "--conv_mode", 
+        "--conv_mode",
         type=str,
         required=False,
         default='eval_mvbench',
     )
     parser.add_argument(
-        "--pooling_shape", 
+        "--pooling_shape",
         type=str,
         required=False,
         default=None,
@@ -85,6 +85,7 @@ def parse_args():
 
 def load_model_and_dataset(rank, world_size, pretrained_model_name_or_path, num_frames, use_lora, lora_alpha, weight_dir, pooling_shape=(16,12,12)):
     # remind that, once the model goes larger (30B+) may cause the memory to be heavily used up. Even Tearing Nodes.
+    breakpoint()
     model, processor = load_pllava(pretrained_model_name_or_path, num_frames=num_frames, use_lora=use_lora, weight_dir=weight_dir, lora_alpha=lora_alpha, pooling_shape=pooling_shape)
     logger.info('done loading llava')
 
@@ -112,7 +113,7 @@ def infer_mvbench(
     conv.user_query(data_sample['question'], pre_query_prompt, post_query_prompt, is_mm=True)
     if answer_prompt is not None:
         conv.assistant_response(answer_prompt)
-        
+
     llm_message, conv = pllava_answer(
         conv=conv,
         model=model,
@@ -122,7 +123,7 @@ def infer_mvbench(
         do_sample=False,
         print_res=print_res
     )
-    
+
     if answer_prompt is not None:
         llm_message =  ''.join(llm_message.split(answer_prompt)[1:])
 
@@ -130,7 +131,7 @@ def infer_mvbench(
         llm_message = return_prompt + llm_message
 
     return llm_message
-    
+
 def single_test(model, processor, vid_path, num_frames=4, conv_mode="plain"):
     def get_index(num_frames, num_segments):
         seg_size = float(num_frames - 1) / num_segments
@@ -165,6 +166,7 @@ def single_test(model, processor, vid_path, num_frames=4, conv_mode="plain"):
     img_list = vid
     conv = conv_templates[conv_mode].copy()
     conv.user_query("Describe the video in details.", is_mm=True)
+    breakpoint()
     llm_response, conv = pllava_answer(conv=conv, model=model, processor=processor, do_sample=False, img_list=img_list, max_new_tokens=256, print_res=True)
 
 def run(rank, args, world_size):
@@ -187,7 +189,7 @@ def run(rank, args, world_size):
                                                        use_lora=args.use_lora,
                                                        lora_alpha=args.lora_alpha,
                                                        weight_dir=args.weight_dir,
-                                                       pooling_shape=pooling_shape)
+                                                       pooling_shape=None)
     logger.info(f'done model and dataset...')
     logger.info('constructing dataset...')
     logger.info('single test...')
@@ -241,7 +243,7 @@ def run(rank, args, world_size):
         if rank == 0:
             tbar.update(len(result_list) - done_count, )
             tbar.set_description_str(
-                f"One Chunk--Task Type: {task_type}, Chunk Part  Acc: {acc_dict[task_type][0] / acc_dict[task_type][1] * 100 :.2f}%;" 
+                f"One Chunk--Task Type: {task_type}, Chunk Part  Acc: {acc_dict[task_type][0] / acc_dict[task_type][1] * 100 :.2f}%;"
                 f" Chunk Total Acc: {correct / total * 100 :.2f}%"
             )
             done_count = len(result_list)
@@ -262,7 +264,7 @@ def main():
             with Pool(world_size) as pool:
                 func = functools.partial(run, args=args, world_size=world_size)
                 result_lists = pool.map(func, range(world_size))
-            
+
             logger.info('finished running')
             result_list = [ res for res in itertools.chain(*result_lists)]
         else:
@@ -272,7 +274,7 @@ def main():
         logger.info(f'loaded results from {save_path}')
         result_list = json_data
     save_results(result_list, save_path)
-    
-    
+
+
 if __name__ == "__main__":
     main()

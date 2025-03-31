@@ -13,7 +13,7 @@ from tasks.eval.eval_utils import (
 )
 from tasks.eval.demo import pllava_theme
 
-SYSTEM="""You are a powerful Video Magic ChatBot, a large vision-language assistant. 
+SYSTEM="""You are a powerful Video Magic ChatBot, a large vision-language assistant.
 You are able to understand the video content that the user provides and assist the user in a video-language related task.
 The user might provide you with the video and maybe some extra noisy information to help you out or ask you a question. Make use of the information in a proper way to be competent for the job.
 ### INSTRUCTIONS:
@@ -30,14 +30,15 @@ INIT_CONVERSATION: Conversation = conv_plain_v1.copy()
 def init_model(args):
 
     print('Initializing PLLaVA')
+    args.num_frames = 1
     model, processor = load_pllava(
-        args.pretrained_model_name_or_path, args.num_frames, 
-        use_lora=args.use_lora, 
-        weight_dir=args.weight_dir, 
-        lora_alpha=args.lora_alpha, 
+        args.pretrained_model_name_or_path, args.num_frames,
+        use_lora=args.use_lora,
+        weight_dir=args.weight_dir,
+        lora_alpha=args.lora_alpha,
         use_multi_gpus=args.use_multi_gpus)
-    if not args.use_multi_gpus:
-        model = model.to('cuda')
+    #if not args.use_multi_gpus:
+        #model = model.to('cuda')
     chat = ChatPllava(model, processor)
     return chat
 
@@ -65,10 +66,10 @@ def upload_img(gr_img, gr_video, chat_state=None, num_segments=None, img_list=No
     print(gr_img, gr_video)
     chat_state = INIT_CONVERSATION.copy() if chat_state is None else chat_state
     img_list = [] if img_list is None else img_list
-    
+
     if gr_img is None and gr_video is None:
         return None, None, gr.update(interactive=True),gr.update(interactive=True, placeholder='Please upload video/image first!'), chat_state, None
-    if gr_video: 
+    if gr_video:
         llm_message, img_list, chat_state = chat.upload_video(gr_video, chat_state, img_list, num_segments)
         return (
             gr.update(interactive=True),
@@ -177,7 +178,6 @@ model_description = f"""
     - weight_dir:{args.weight_dir}
 """
 
-# with gr.Blocks(title="InternVideo-VideoChat!",theme=gvlabtheme,css="#chatbot {overflow:auto; height:500px;} #InputVideo {overflow:visible; height:320px;} footer {visibility: none}") as demo:
 with gr.Blocks(title="PLLaVA",
                theme=pllava_theme,
                css="#chatbot {overflow:auto; height:500px;} #InputVideo {overflow:visible; height:320px;} footer {visibility: none}") as demo:
@@ -186,23 +186,13 @@ with gr.Blocks(title="PLLaVA",
     gr.Markdown(model_description)
     with gr.Row():
         with gr.Column(scale=0.5, visible=True) as video_upload:
-            # with gr.Column(elem_id="image", scale=0.5) as img_part:
             with gr.Tab("Video", elem_id='video_tab'):
                 up_video = gr.Video(interactive=True, include_audio=True, elem_id="video_upload", height=360)
             with gr.Tab("Image", elem_id='image_tab'):
                 up_image = gr.Image(type="pil", interactive=True, elem_id="image_upload", height=360)
             upload_button = gr.Button(value="Upload & Start Chat", interactive=True, variant="primary")
             clear = gr.Button("Restart")
-            
-            # num_segments = gr.Slider(
-            #     minimum=8,
-            #     maximum=64,
-            #     value=8,
-            #     step=1,
-            #     interactive=True,
-            #     label="Video Segments",
-            # )
-        
+
         with gr.Column(visible=True)  as input_raws:
             system_string = gr.Textbox(SYSTEM, interactive=True, label='system')
             num_beams = gr.Slider(
@@ -212,7 +202,7 @@ with gr.Blocks(title="PLLaVA",
                 step=1,
                 interactive=True,
                 label="beam search numbers",
-            )           
+            )
             temperature = gr.Slider(
                 minimum=0.1,
                 maximum=2.0,
@@ -221,7 +211,7 @@ with gr.Blocks(title="PLLaVA",
                 interactive=True,
                 label="Temperature",
             )
-            
+
             chat_state = gr.State()
             img_list = gr.State()
             chatbot = gr.Chatbot(elem_id="chatbot",label='Conversation')
@@ -231,8 +221,8 @@ with gr.Blocks(title="PLLaVA",
                 with gr.Column(scale=0.15, min_width=0):
                     run = gr.Button("💭Send")
                 with gr.Column(scale=0.15, min_width=0):
-                    clear = gr.Button("🔄Clear")     
-    
+                    clear = gr.Button("🔄Clear")
+
     with gr.Row():
         examples = gr.Examples(
             examples=[
@@ -250,16 +240,14 @@ with gr.Blocks(title="PLLaVA",
     chat = init_model(args)
     INIT_CONVERSATION = conv_templates[args.conv_mode]
     upload_button.click(upload_img, [up_image, up_video, chat_state], [up_image, up_video, text_input, upload_button, chat_state, img_list])
-    
+
     text_input.submit(gradio_ask, [text_input, chatbot, chat_state, system_string], [text_input, chatbot, chat_state]).then(
         gradio_answer, [chatbot, chat_state, img_list, num_beams, temperature], [chatbot, chat_state, img_list]
     )
     run.click(gradio_ask, [text_input, chatbot, chat_state, system_string], [text_input, chatbot, chat_state]).then(
         gradio_answer, [chatbot, chat_state, img_list, num_beams, temperature], [chatbot, chat_state, img_list]
     )
-    run.click(lambda: "", None, text_input)  
+    run.click(lambda: "", None, text_input)
     clear.click(gradio_reset, [chat_state, img_list], [chatbot, up_image, up_video, text_input, upload_button, chat_state, img_list], queue=False)
 
-# demo.queue(max_size=5)
 demo.launch(share=True,server_port=args.server_port)
-# demo.launch(server_name="0.0.0.0", server_port=10034, enable_queue=True)

@@ -1,0 +1,3 @@
+pip install torch --index-url https://download.pytorch.org/whl/cu
+pip install git-lfs 
+pip install apex av blessings decord deepspeed ffmpeg fiftyone flash_attn fvcore gdown gpustat gradio idscheck mmcv-full moviepy natsort nvidia-cuda-cupti-cu11 nvidia-cuda-nvrtc-cu11 nvidia-cuda-runtime-cu11 nvidia-cudnn-cu11 nvidia-cufft-cu11 nvidia-curand-cu11 nvidia-cusolver-cu11 nvidia-cusparse-cu11 nvidia-ml-py3 nvidia-nccl-cu11 nvidia-nvtx-cu11 omegaconf openai openmim peft PySocks sentencepiece shellingham tensorboard tensorboardX timm torchaudio tzdata wandb wheel 

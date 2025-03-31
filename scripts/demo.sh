@@ -20,7 +20,7 @@ echo Running DEMO On Devices: ${CUDA_VISIBLE_DEVICES}
 
 
 # 7B and 13B, There are problem if Model was split around A100 40G... Probably because some unkown bug in accelerate dispatch
-CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-"0"} python -m tasks.eval.demo.pllava_demo \
+echo CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-"0"} python -m tasks.eval.demo.pllava_demo \
     --pretrained_model_name_or_path ${model_dir} \
     --num_frames ${num_frames} \
     --use_lora \
